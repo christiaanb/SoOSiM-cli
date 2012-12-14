@@ -21,6 +21,7 @@ executable SoOSiM-cli
   ghc-options:        -fwarn-tabs -main-is SoOSiM.CLI
   main-is:            SoOSiM/CLI.hs
   other-modules:      SoOSiM.CLI.Args
+                      SoOSiM.CLI.Util
   build-depends:      base              >= 4.3.1.0,
                       cmdargs           >= 0.10.1,
                       containers        >= 0.5.0.0,
