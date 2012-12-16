@@ -9,6 +9,11 @@ import Control.Applicative (Applicative(..))
 import Control.Monad.State (StateT(..))
 import Data.Traversable    (Traversable(..))
 
+-- | The 'mapAccumLM' function behaves like a combination of 'fmap'
+-- and 'foldl' in a monadic context; it applies a function to each
+-- element of a structure, passing an accumulating parameter from
+-- left to right, and returning a final value of this accumulator
+-- together with the new structure.
 mapAccumLM ::
   (Monad m, Functor m, Traversable t)
   => (a -> b -> m (c,a))
@@ -16,6 +21,19 @@ mapAccumLM ::
   -> t b
   -> m (t c, a)
 mapAccumLM f s t = runStateT (traverse (StateT . flip f) t) s
+
+-- |The 'mapAccumRM' function behaves like a combination of 'fmap'
+-- and 'foldr' in a monadic context; it applies a function to each
+-- element of a structure, passing an accumulating parameter from
+-- right to left, and returning a final value of this accumulator
+-- together with the new structure.
+mapAccumRM ::
+  (Monad m, Functor m, Traversable t)
+  => (a -> b -> m (c,a))
+  -> a
+  -> t b
+  -> m (t c, a)
+mapAccumRM f s t = runStateTR (traverse (StateTR . flip f) t) s
 
 newtype StateTR s m a = StateTR { runStateTR :: s -> m (a, s) }
 
@@ -29,11 +47,3 @@ instance (Functor m, Monad m) => Applicative (StateTR s m) where
     ~(v,s')  <- kv s
     ~(f,s'') <- kf s'
     return (f v, s'')
-
-mapAccumRM ::
-  (Monad m, Functor m, Traversable t)
-  => (a -> b -> m (c,a))
-  -> a
-  -> t b
-  -> m (t c, a)
-mapAccumRM f s t = runStateTR (traverse (StateTR . flip f) t) s
