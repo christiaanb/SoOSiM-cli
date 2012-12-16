@@ -48,6 +48,7 @@ loopInteract s = do
         Just ""       -> (liftIO $ tick s') >>= loopInteract
         _             -> outputStrLn helpText >> loopInteract s'
   where
+    loop (Just 0) s = return s
     loop (Just n) s = do
       s' <- liftIO (tick s)
       ((ns',_),_)  <- lift $ listen $ printNodes (nodes s')
@@ -55,7 +56,6 @@ loopInteract s = do
       if running s'
         then loop (Just (n-1)) s''
         else return s'
-    loop (Just 0) s = return s
     loop Nothing  s = do
       s' <- liftIO (tick s)
       ((ns',_),_)  <- lift $ listen $ printNodes (nodes s')
