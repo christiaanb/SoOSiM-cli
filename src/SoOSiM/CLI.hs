@@ -3,6 +3,7 @@ module SoOSiM.CLI where
 
 import qualified Data.Foldable            as F
 import           Data.IntMap              (IntMap)
+import           Data.Maybe               (catMaybes)
 import           Control.Applicative      ((<$>))
 import           Control.Concurrent.STM   (TVar,readTVarIO)
 import           Data.List                (intersperse)
@@ -26,10 +27,10 @@ main = do
   whenM (Directory.doesFileExist f) $ do
     s <- loader f
     k <- execWriterT $ runInputT defaultSettings (outputStrLn helpText >> loopInteract s)
-    putStrLn $ unlines k
+    putStrLn $ unlines $ catMaybes $ map snd k
     return ()
 
-loopInteract :: SimState -> InputT (WriterT [String] IO) ()
+loopInteract :: SimState -> InputT (WriterT [(String,Maybe String)] IO) ()
 loopInteract s = do
     let clk = simClk s
         ns  = nodes s
@@ -38,7 +39,7 @@ loopInteract s = do
     outputStrLn "= System State ="
     outputStrLn (unlines comps)
     unless (null msgs) $ do outputStrLn "= Trace Messages ="
-                            outputStrLn (unlines $ msgs)
+                            outputStrLn (unlines $ map fst msgs)
     minput <- getInputLine "SoOSiM $ "
     when (running s) $ do
       case minput of
@@ -74,7 +75,7 @@ helpText = unlines $
 
 printNodes ::
   Functor m
-  => MonadWriter [String] m
+  => MonadWriter [(String,Maybe String)] m
   => MonadIO m
   => IntMap Node
   -> m (IntMap Node, [String])
@@ -82,7 +83,7 @@ printNodes = mapAccumRM printNode []
 
 printNode ::
   Functor m
-  => MonadWriter [String] m
+  => MonadWriter [(String,Maybe String)] m
   => MonadIO m
   => [String]
   -> Node
@@ -93,7 +94,7 @@ printNode r n = do
   return (n {nodeComponents = nC}, s':r)
 
 printComponentContext ::
-  MonadWriter [String] m
+  MonadWriter [(String,Maybe String)] m
   => MonadIO m
   => [String]
   -> ComponentContext
