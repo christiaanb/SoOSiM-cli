@@ -4,12 +4,13 @@ module SoOSiM.CLI where
 import qualified Data.Foldable            as F
 import           Data.IntMap              (IntMap)
 import           Data.Maybe               (catMaybes)
+import           Data.Monoid              (Any(..))
 import           Control.Applicative      ((<$>))
 import           Control.Concurrent.STM   (TVar,readTVarIO)
 import           Data.List                (intersperse)
 import           Control.Monad            (when,unless)
 import           Control.Monad.IfElse     (whenM)
-import           Control.Monad.Writer     (MonadWriter,MonadIO,WriterT,execWriterT,listen,tell,lift,liftIO)
+import           Control.Monad.Writer     (MonadWriter,MonadIO,WriterT(..),execWriterT,listen,tell,lift,liftIO)
 import           System.Console.CmdArgs   (cmdArgs)
 import           System.Console.Haskeline (InputT,defaultSettings,getInputLine,outputStrLn,runInputT)
 import qualified System.Directory         as Directory
@@ -34,14 +35,14 @@ loopInteract :: SimState -> InputT (WriterT [(String,Maybe String)] IO) ()
 loopInteract s = do
     let clk = simClk s
         ns  = nodes s
-    ((ns',comps),msgs) <- lift $ listen $ printNodes ns
+    (((ns',comps),anyRunning),msgs) <- lift $ listen $ runWriterT (printNodes ns)
     let s' = s {nodes = ns'}
     outputStrLn "= System State ="
     outputStrLn (unlines comps)
     unless (null msgs) $ do outputStrLn "= Trace Messages ="
                             outputStrLn (unlines $ map fst msgs)
     minput <- getInputLine "SoOSiM $ "
-    when (running s) $ do
+    when (running s && getAny anyRunning) $ do
       case minput of
         Just "quit"   -> return ()
         Just "help"   -> outputStrLn helpText >> loopInteract s'
@@ -52,16 +53,16 @@ loopInteract s = do
     loop (Just 0) s = return s
     loop (Just n) s = do
       s' <- liftIO (tick s)
-      ((ns',_),_)  <- lift $ listen $ printNodes (nodes s')
+      (((ns',_),anyRunning),_)  <- lift $ listen $ runWriterT (printNodes (nodes s'))
       let s'' = s' {nodes = ns'}
-      if running s'
+      if (running s' && getAny anyRunning)
         then loop (Just (n-1)) s''
         else return s'
     loop Nothing  s = do
       s' <- liftIO (tick s)
-      ((ns',_),_)  <- lift $ listen $ printNodes (nodes s')
+      (((ns',_),anyRunning),_)  <- lift $ listen $ runWriterT (printNodes (nodes s'))
       let s'' = s' {nodes = ns'}
-      if running s'
+      if (running s' && getAny anyRunning)
         then loop Nothing s''
         else return s'
 
@@ -70,53 +71,47 @@ helpText = unlines $
       [ "= Commands ="
       , "type 'quit' to quit"
       , "hit return to progress 1 step"
-      , "type 'finish' to progress until a component calls 'stopSim'"
+      , "type 'finish' to progress until a component calls 'stopSim', or all are idle"
       ]
 
+type PrintMonad a = WriterT Any (WriterT [(String,Maybe String)] IO) a
+
 printNodes ::
-  Functor m
-  => MonadWriter [(String,Maybe String)] m
-  => MonadIO m
-  => IntMap Node
-  -> m (IntMap Node, [String])
+  IntMap Node
+  -> PrintMonad (IntMap Node, [String])
 printNodes = mapAccumRM printNode []
 
 printNode ::
-  Functor m
-  => MonadWriter [(String,Maybe String)] m
-  => MonadIO m
-  => [String]
+  [String]
   -> Node
-  -> m (Node, [String])
+  -> PrintMonad (Node, [String])
 printNode r n = do
   (nC,s) <- mapAccumLM printComponentContext [] (nodeComponents n)
   let s' = "Node " ++ show (nodeId n) ++ ":\n[ " ++ (concat $ intersperse "\n; " s) ++ "\n]"
   return (n {nodeComponents = nC}, s':r)
 
 printComponentContext ::
-  MonadWriter [(String,Maybe String)] m
-  => MonadIO m
-  => [String]
+  [String]
   -> ComponentContext
-  -> m (ComponentContext, [String])
+  -> PrintMonad (ComponentContext, [String])
 printComponentContext s cc@(CC iface cid _ stT _ msgBT tBuf _) = do
-  tell tBuf
+  lift $ tell tBuf
   let cc' = cc {traceMsgs = []}
-  status  <- liftIO $ printStatus stT msgBT
+  status  <- printStatus stT msgBT
   let s'  = (show cid ++ " :: " ++ componentName iface ++ " (" ++ status ++ ")"):s
   return $! (cc',s')
 
 printStatus ::
   TVar (ComponentStatus s)
   -> TVar [a]
-  -> IO String
+  -> PrintMonad String
 printStatus stT msgBT = do
-  st    <- readTVarIO stT
-  msgBT <- readTVarIO msgBT
+  st    <- liftIO $ readTVarIO stT
+  msgBT <- liftIO $ readTVarIO msgBT
   case (st,msgBT) of
     (ReadyToIdle,[])     -> return "Idle"
-    (ReadyToIdle,_)      -> return "Running"
-    (WaitingFor cId _,_) -> return $! "Waiting for " ++ show cId
-    (Running _ _,_)      -> return "Running"
-    (ReadyToRun, _)      -> return "Running"
+    (ReadyToIdle,_)      -> tell (Any True) >> return "Running"
+    (WaitingFor cId _,_) -> tell (Any True) >> (return $! "Waiting for " ++ show cId)
+    (Running _ _,_)      -> tell (Any True) >> return "Running"
+    (ReadyToRun, _)      -> tell (Any True) >> return "Running"
     (Killed,_)           -> return "Idle"
