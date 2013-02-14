@@ -5,7 +5,10 @@ import System.Console.CmdArgs
 
 data SoOSiMCLI
   = SoOSiMCLI
-  { example :: FilePath
-  } deriving (Data,Typeable)
+  { example   :: FilePath
+  , batchMode :: Bool
+  } deriving (Show,Data,Typeable)
 
-cliArgs = SoOSiMCLI { example = def &= argPos 0 &= typFile }
+cliArgs = SoOSiMCLI { example   = def &= typFile &= args
+                    , batchMode = def
+                    }

@@ -24,10 +24,13 @@ import SoOSiM.CLI.Util
 
 main :: IO ()
 main = do
-  f <- fmap example $ cmdArgs cliArgs
+  options <- cmdArgs cliArgs
+  let f = example options
+  let b = batchMode options
   whenM (Directory.doesFileExist f) $ do
     s <- loader f
-    k <- execWriterT $ runInputT defaultSettings (outputStrLn helpText >> loopInteract s)
+    k <- execWriterT $ runInputT defaultSettings
+          (if b then loop Nothing s >> return () else outputStrLn helpText >> loopInteract s)
     putStrLn $ unlines $ catMaybes $ map snd k
     return ()
 
@@ -49,22 +52,22 @@ loopInteract s = do
         Just "finish" -> loop Nothing s' >>= const (return ())
         Just ""       -> (liftIO $ tick s') >>= loopInteract
         _             -> outputStrLn helpText >> loopInteract s'
-  where
-    loop (Just 0) s = return s
-    loop (Just n) s = do
-      s' <- liftIO (tick s)
-      (((ns',_),anyRunning),_)  <- lift $ listen $ runWriterT (printNodes (nodes s'))
-      let s'' = s' {nodes = ns'}
-      if (running s' && getAny anyRunning)
-        then loop (Just (n-1)) s''
-        else return s'
-    loop Nothing  s = do
-      s' <- liftIO (tick s)
-      (((ns',_),anyRunning),_)  <- lift $ listen $ runWriterT (printNodes (nodes s'))
-      let s'' = s' {nodes = ns'}
-      if (running s' && getAny anyRunning)
-        then loop Nothing s''
-        else return s'
+
+loop (Just 0) s = return s
+loop (Just n) s = do
+  s' <- liftIO (tick s)
+  (((ns',_),anyRunning),_)  <- lift $ listen $ runWriterT (printNodes (nodes s'))
+  let s'' = s' {nodes = ns'}
+  if (running s' && getAny anyRunning)
+    then loop (Just (n-1)) s''
+    else return s'
+loop Nothing  s = do
+  s' <- liftIO (tick s)
+  (((ns',_),anyRunning),_)  <- lift $ listen $ runWriterT (printNodes (nodes s'))
+  let s'' = s' {nodes = ns'}
+  if (running s' && getAny anyRunning)
+    then loop Nothing s''
+    else return s'
 
 helpText :: String
 helpText = unlines $
