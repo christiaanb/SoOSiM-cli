@@ -97,10 +97,10 @@ printComponentContext ::
   [String]
   -> ComponentContext
   -> PrintMonad (ComponentContext, [String])
-printComponentContext s cc@(CC iface cid _ stT _ msgBT tBuf _) = do
+printComponentContext s cc@(CC iface cid _ stT _ reqBTV _ tBuf _) = do
   lift $ tell tBuf
   let cc' = cc {traceMsgs = []}
-  status  <- printStatus stT msgBT
+  status  <- printStatus stT reqBTV
   let s'  = (show cid ++ " :: " ++ componentName iface ++ " (" ++ status ++ ")"):s
   return $! (cc',s')
 
@@ -108,10 +108,10 @@ printStatus ::
   TVar (ComponentStatus s)
   -> TVar [a]
   -> PrintMonad String
-printStatus stT msgBT = do
+printStatus stT reqBTV = do
   st    <- liftIO $ readTVarIO stT
-  msgBT <- liftIO $ readTVarIO msgBT
-  case (st,msgBT) of
+  reqBT <- liftIO $ readTVarIO reqBTV
+  case (st,reqBT) of
     (ReadyToIdle,[])     -> return "Idle"
     (ReadyToIdle,_)      -> tell (Any True) >> return "Running"
     (WaitingFor cId _,_) -> tell (Any True) >> (return $! "Waiting for " ++ show cId)
